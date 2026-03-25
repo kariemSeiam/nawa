@@ -4,6 +4,39 @@
 
 **Example URL:** [https://nawa.pythonanywhere.com](https://nawa.pythonanywhere.com) (your username + web app name may differ; match your PA **Web** tab URL.)
 
+**Repo:** [github.com/kariemSeiam/nawa](https://github.com/kariemSeiam/nawa) — `git pull` on the server after each deploy. **`dist/` is not in git** (see `.gitignore`); after pulling, either run `npm ci && npm run build` on a machine with Node and upload `dist/` to PA, or build locally before uploading only the `dist/` folder.
+
+## GitHub → PythonAnywhere (account username `nawa`)
+
+Bash console:
+
+```bash
+cd ~
+git clone https://github.com/kariemSeiam/nawa.git nawa
+cd nawa
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**Web tab → Virtualenv:** `/home/nawa/nawa/.venv`
+
+**Replace** the entire contents of `/var/www/nawa_pythonanywhere_com_wsgi.py` with (delete the Hello World `application`):
+
+```python
+import sys
+
+path = "/home/nawa/nawa"
+if path not in sys.path:
+    sys.path.insert(0, path)
+
+from wsgi import application
+```
+
+**Environment variables:** `FLASK_ENV=production`, optional `PYTHONANYWHERE_DOMAIN=nawa.pythonanywhere.com`
+
+Then **Reload** the web app. Until `dist/` exists under `/home/nawa/nawa/dist/`, `/` may return `frontend_build_missing` — add `dist/` from a local `npm run build`.
+
 ## What PythonAnywhere gives you
 
 | Topic | Notes |
