@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --surface: #f5f3ed;
+    --ink: #0f172a;
+    --accent-amber: #b4860b;
+    --radius-lg: clamp(1rem, 2.5vw, 1.5rem);
+    --radius-xl: clamp(1.25rem, 3vw, 2rem);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  body {
+    font-feature-settings: 'kern' 1;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: rgba(180, 134, 11, 0.12);
+  }
+
+  ::selection {
+    background: rgba(180, 134, 11, 0.22);
+    color: #0f172a;
+  }
+}
+
+@layer components {
+  /* Horizontal page gutter + safe area (RTL: logical inline) */
+  .px-gutter {
+    padding-inline-start: max(1rem, env(safe-area-inset-left, 0px));
+    padding-inline-end: max(1rem, env(safe-area-inset-right, 0px));
+  }
+
+  @media (min-width: 640px) {
+    .px-gutter {
+      padding-inline-start: max(1.5rem, env(safe-area-inset-left, 0px));
+      padding-inline-end: max(1.5rem, env(safe-area-inset-right, 0px));
+    }
+  }
+
+  .section-y {
+    padding-block: clamp(2.5rem, 7vw, 5.5rem);
+  }
+
+  .section-y-tight {
+    padding-block: clamp(2rem, 5vw, 3.5rem);
+  }
+
+  .container-content {
+    @apply mx-auto w-full max-w-[72rem] px-gutter;
+  }
+
+  .text-balance-safe {
+    text-wrap: balance;
+  }
+
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-amber-500/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f5f3ed];
+  }
+}
+
+@layer utilities {
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 900px;
+  }
+
+  .pb-mobile-bar {
+    padding-bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  @media (min-width: 768px) {
+    .pb-mobile-bar {
+      padding-bottom: 0;
+    }
+  }
+
+  .animate-delay-100 {
+    animation-delay: 100ms;
+  }
+  .animate-delay-200 {
+    animation-delay: 200ms;
+  }
+  .animate-delay-300 {
+    animation-delay: 300ms;
+  }
+}
