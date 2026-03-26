@@ -28,7 +28,7 @@ function TelemetryRoutes() {
         element={
           <Suspense
             fallback={
-              <div className="min-h-dvh bg-[#f5f3ed] px-4 py-10 text-center text-slate-600" dir="rtl">
+              <div className="min-h-dvh bg-nawa-parchment px-4 py-10 text-center text-slate-600" dir="rtl">
                 جاري فتح لوحة الزيارات…
               </div>
             }

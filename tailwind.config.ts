@@ -31,10 +31,19 @@ export default {
         measure: '65ch',
         content: '72rem',
       },
+      colors: {
+        nawa: {
+          parchment: '#f3f1ea',
+          elevated: '#faf8f4',
+          ink: '#0c1222',
+        },
+      },
       boxShadow: {
         lift: '0 22px 60px -28px rgba(15, 23, 42, 0.28)',
         card: '0 4px 24px -8px rgba(15, 23, 42, 0.12)',
         'card-hover': '0 28px 70px -32px rgba(15, 23, 42, 0.22)',
+        paper: '0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 40px -18px rgba(15, 23, 42, 0.12)',
+        'paper-sm': '0 1px 0 rgba(255, 255, 255, 0.65) inset, 0 1px 2px rgba(15, 23, 42, 0.04)',
       },
       transitionTimingFunction: {
         out: 'cubic-bezier(0.22, 1, 0.36, 1)',

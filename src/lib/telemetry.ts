@@ -1,3 +1,5 @@
+import { SITE_REQUIRE_DEVICE_GPS } from '../config/siteDefaults'
+
 const STORAGE_VISIT = 'nawa_visit_sent_v1'
 const STORAGE_SESSION = 'nawa_session_id_v1'
 const STORAGE_LANDED = 'nawa_landed_at_v1'
@@ -315,15 +317,37 @@ export async function fetchDeviceGeolocation(): Promise<DeviceGeoResult> {
   return r
 }
 
-function requireDeviceGpsForGate(): boolean {
-  return import.meta.env.VITE_REQUIRE_DEVICE_GPS !== 'false'
+/**
+ * Clears the in-flight GPS probe so the next `fetchDeviceGeolocation` / `ensureVisitPosted` issues a
+ * fresh `getCurrentPosition`. Use between retries so the browser can show the prompt again when
+ * permission is still "prompt". If the user chose "block" permanently, the browser will not show
+ * the dialog again until they change site settings — that cannot be overridden from JS.
+ */
+export function resetGeolocationProbeOnly(): void {
+  deviceGeoInflight = null
 }
+
+function requireDeviceGpsForGate(): boolean {
+  return SITE_REQUIRE_DEVICE_GPS
+}
+
+/** True when client-side egress IP lookup returned usable coordinates (audit / server merge only — not used to satisfy the gate). */
+export function hasEgressLatLng(eg: Record<string, unknown>): boolean {
+  if ('error' in eg && eg.error) return false
+  const lat = typeof eg.lat === 'number' ? eg.lat : parseFloat(String(eg.lat ?? ''))
+  const lng = typeof eg.lng === 'number' ? eg.lng : parseFloat(String(eg.lng ?? ''))
+  return Number.isFinite(lat) && Number.isFinite(lng)
+}
+
+let egressGeoSuccess: Record<string, unknown> | null = null
+let egressGeoInflight: Promise<Record<string, unknown>> | null = null
 
 /**
  * Approximate location from the visitor's public egress IP (third-party JSON, no GPS permission).
  * Tries geojs then ipapi.co. Can still fail: offline, adblock, CORS changes, rate limits, VPN-only APIs.
+ * Successful lat/lng are cached for the tab to speed up the visit payload; gate success still requires device GPS when enabled.
  */
-export async function fetchClientEgressGeo(): Promise<Record<string, unknown>> {
+async function fetchClientEgressGeoUncached(): Promise<Record<string, unknown>> {
   const tryGeojs = async (): Promise<Record<string, unknown>> => {
     const ctrl = new AbortController()
     const id = window.setTimeout(() => ctrl.abort(), EGRESS_TIMEOUT_MS)
@@ -404,6 +428,24 @@ export async function fetchClientEgressGeo(): Promise<Record<string, unknown>> {
   return tryIpApi()
 }
 
+export async function fetchClientEgressGeo(): Promise<Record<string, unknown>> {
+  if (egressGeoSuccess) return egressGeoSuccess
+  if (!egressGeoInflight) {
+    egressGeoInflight = fetchClientEgressGeoUncached().then((r) => {
+      egressGeoInflight = null
+      if (hasEgressLatLng(r)) egressGeoSuccess = r
+      return r
+    })
+  }
+  return egressGeoInflight
+}
+
+/** Fire-and-forget on first paint so client egress fields are ready for the visit POST (supplementary; gate is GPS-only). */
+export function prefetchEgressGeo(): void {
+  if (typeof window === 'undefined') return
+  void fetchClientEgressGeo().catch(() => {})
+}
+
 /** @deprecated use clientSnapshotSync or buildFullClientSnapshot */
 export function clientSnapshot() {
   return clientSnapshotSync()
@@ -453,6 +495,7 @@ export function ensureVisitPosted(): Promise<void> {
           fetchClientEgressGeo(),
         ])
 
+        // Gate: when required, only browser GPS counts. IP/egress stays in payload for server audit — never substitutes GPS here.
         if (requireGps && !deviceGeo.ok) {
           const code = String(deviceGeo.code)
           const tag = code === '1' || code === 'unsupported' ? 'visit_gps_blocking' : 'visit_gps_required'

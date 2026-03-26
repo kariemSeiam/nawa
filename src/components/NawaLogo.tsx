@@ -8,7 +8,7 @@ type Props = {
 }
 
 /**
- * نواة الجملة — bold N monogram: slate stems + brass diagonal.
+ * نواة — bold N monogram: slate stems + brass diagonal.
  * Badge variant must not repeat the plate: wrapper = frame, SVG = letter only.
  */
 export function NawaLogo({ className = '', variant = 'badge', title }: Props) {
@@ -53,7 +53,7 @@ export function NawaLogo({ className = '', variant = 'badge', title }: Props) {
     <rect x="4" y="4" width="56" height="56" rx="14" fill="#f0ebe3" stroke="#e3dcd2" strokeWidth="1" />
   )
 
-  const label = title ?? 'نواة الجملة — توريد كهربائي بالجملة'
+  const label = title ?? 'نواة — خدمات تمويلية مرخّصة'
 
   if (variant === 'mark') {
     return (

@@ -14,11 +14,7 @@ from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, request, send_file
-
-try:
-    from flask_cors import CORS as _FlaskCORS
-except ImportError:
-    _FlaskCORS = None  # prod (PA) same-origin; optional for local dev
+from flask_cors import CORS
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
@@ -40,9 +36,9 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 512 * 1024
 app.config["JSON_SORT_KEYS"] = False
 
-# Dev: optional CORS when flask-cors is installed. Prod: same origin — never required.
-if not IS_PROD and _FlaskCORS is not None:
-    _FlaskCORS(app, resources={r"/api/*": {"origins": "*"}})
+# Dev: Vite (5173) → API on 8787 needs CORS. Prod: Flask serves SPA + /api same origin — no CORS.
+if not IS_PROD:
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 
 def today_log_path(prefix: str) -> Path:

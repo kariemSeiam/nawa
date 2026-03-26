@@ -5,11 +5,20 @@
 @layer base {
   :root {
     --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --surface: #f5f3ed;
-    --ink: #0f172a;
-    --accent-amber: #b4860b;
+    /* Institutional B2B surface system */
+    --surface-page: #f3f1ea;
+    --surface-elevated: #faf8f4;
+    --surface-card: #ffffff;
+    --surface-muted: #ebe6dc;
+    --ink: #0c1222;
+    --ink-muted: #475569;
+    --accent-amber: #9a7209;
+    --accent-amber-bright: #c9980c;
+    --border-hairline: rgba(15, 23, 42, 0.08);
+    --border-strong: rgba(15, 23, 42, 0.12);
     --radius-lg: clamp(1rem, 2.5vw, 1.5rem);
     --radius-xl: clamp(1.25rem, 3vw, 2rem);
+    --shadow-document: 0 1px 0 rgba(255, 255, 255, 0.65) inset;
   }
 
   html {
@@ -25,17 +34,17 @@
   body {
     font-feature-settings: 'kern' 1;
     text-rendering: optimizeLegibility;
-    -webkit-tap-highlight-color: rgba(180, 134, 11, 0.12);
+    -webkit-tap-highlight-color: rgba(154, 114, 9, 0.1);
+    color: var(--ink);
   }
 
   ::selection {
-    background: rgba(180, 134, 11, 0.22);
-    color: #0f172a;
+    background: rgba(201, 152, 12, 0.22);
+    color: var(--ink);
   }
 }
 
 @layer components {
-  /* Horizontal page gutter + safe area (RTL: logical inline) */
   .px-gutter {
     padding-inline-start: max(1rem, env(safe-area-inset-left, 0px));
     padding-inline-end: max(1rem, env(safe-area-inset-right, 0px));
@@ -65,7 +74,34 @@
   }
 
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-amber-500/80 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f5f3ed];
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-amber-600/75 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-page)];
+  }
+
+  /** Section label — official / document tone */
+  .kicker {
+    @apply text-[0.65rem] font-bold uppercase tracking-[0.22em] text-amber-900/85 sm:text-[11px];
+  }
+
+  /** Elevated panel: paper + hairline border */
+  .panel-official {
+    border: 1px solid var(--border-strong);
+    background: var(--surface-card);
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.04),
+      0 12px 40px -18px rgba(15, 23, 42, 0.12);
+  }
+
+  /** Dark section with subtle grid (institutional) */
+  .bg-institutional-dark {
+    background-color: #0b1220;
+    background-image:
+      linear-gradient(180deg, rgba(201, 152, 12, 0.06) 0%, transparent 42%),
+      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size:
+      100% 100%,
+      48px 48px,
+      48px 48px;
   }
 }
 
@@ -93,5 +129,9 @@
   }
   .animate-delay-300 {
     animation-delay: 300ms;
+  }
+
+  .mask-fade-x {
+    mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
   }
 }

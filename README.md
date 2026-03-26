@@ -53,15 +53,15 @@ npm run dev
 
 ## Environment
 
-Create **`.env`** in the project root (see `server/index.mjs` — loads via `dotenv`).
+Create **`.env`** in the project root for **server** vars (see `server/index.mjs` — loads via `dotenv`).
 
 | Variable | Purpose |
 |----------|---------|
-| `VITE_WHATSAPP_NUMBER` | Digits for `wa.me` links (e.g. `20XXXXXXXXXX`) |
-| `VITE_REQUIRE_DEVICE_GPS` | Default: required. Set to `false` to allow the gate without device geolocation (e.g. local HTTP / testing). |
 | `PORT` | API port (default **8787**) |
 
-Vite exposes only `VITE_*` to the client. Never commit secrets.
+**Client / landing:** WhatsApp number, license text, regulator name, and GPS gate default live in **`src/config/siteDefaults.ts`** (no `VITE_*` required).
+
+Never commit secrets.
 
 ---
 
